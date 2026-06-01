@@ -1,0 +1,33 @@
+# API Keys and sensitive data
+.env
+.env.local
+.env.*.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+
+# Node modules (if using npm)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build files
+dist/
+build/
+.cache/
+
+# Logs
+*.log
+*.logs
+npm-debug.log*
+
+# Temporary files
+*.tmp
+*.bak
+*.temp

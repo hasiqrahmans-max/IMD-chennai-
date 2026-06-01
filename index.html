@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IMD Chennai — Weather Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;700;900&family=Noto+Sans+Tamil:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+  :root {
+    --bg: #020d1a;
+    --panel: #040f1e;
+    --border: #0a2a4a;
+    --accent: #00c8ff;
+    --accent2: #00ff9f;
+    --accent3: #ff6b35;
+    --warn: #ffcc00;
+    --danger: #ff2d55;
+    --text: #e8f4ff;
+    --muted: #4a7a9b;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: linear-gradient(rgba(0, 200, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 200, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .scanlines {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 999;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, 0.04) 2px, rgba(0, 0, 0, 0.04) 4px);
+  }
+
+  .dashboard {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(4, 15, 30, 0.97);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .imd-logo {
+    width: 48px;
+    height: 48px;
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: 12px;
+    color: var(--accent);
+    flex-shrink: 0;
+    animation: pulse-border 3s ease-in-out infinite;
+  }
+
+  @keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 8px rgba(0, 200, 255, 0.3); }
+    50% { box-shadow: 0 0 22px rgba(0, 200, 255, 0.7); }
+  }
+
+  .header-titles h1 {
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 2px;
+  }
+
+  .header-titles .subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'Noto Sans Tamil', sans-serif;
+  }
+
+  .header-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .clock {
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 1px;
+  }
+
+  .date-text {
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .badges {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .live-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(0, 255, 159, 0.08);
+    border: 1px solid rgba(0, 255, 159, 0.3);
+    border-radius: 12px;
+    padding: 3px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--accent2);
+  }
+
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent2);
+    animation: blink 1.2s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  .api-status {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    letter-spacing: 1px;
+    font-weight: 600;
+  }
+
+  .api-status.ok {
+    background: rgba(0, 255, 159, 0.15);
+    border: 1px solid rgba(0, 255, 159, 0.4);
+    color: var(--accent2);
+  }
+
+  .api-status.loading {
+    background: rgba(0, 200, 255, 0.1);
+    border: 1px solid rgba(0, 200, 255, 0.3);
+    color: var(--accent);
+  }
+
+  .alert-bar {
+    padding: 7px 0;
+    overflow: hidden;
+    position: relative;
+    border-bottom: 1px solid;
+  }
+
+  .alert-bar.safe {
+    background: linear-gradient(90deg, rgba(0, 255, 159, 0.08), rgba(0, 255, 159, 0.02));
+    border-color: rgba(0, 255, 159, 0.2);
+  }
+
+  .alert-bar.warn {
+    background: linear-gradient(90deg, rgba(255, 204, 0, 0.12), rgba(255, 204, 0, 0.03));
+    border-color: rgba(255, 204, 0, 0.3);
+  }
+
+  .alert-bar.danger {
+    background: linear-gradient(90deg, rgba(255, 45, 85, 0.15), rgba(255, 45, 85, 0.05));
+    border-color: rgba(255, 45, 85, 0.3);
+  }
+
+  .ticker-label {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    z-index: 2;
+    white-space: nowrap;
+  }
+
+  .alert-bar.safe .ticker-label { background: var(--accent2); color: #000; }
+  .alert-bar.warn .ticker-label { background: var(--warn); color: #000; }
+  .alert-bar.danger .ticker-label { background: var(--danger); color: #fff; }
+
+  .ticker-wrap {
+    margin-left: 88px;
+    overflow: hidden;
+  }
+
+  .ticker-text {
+    display: inline-block;
+    white-space: nowrap;
+    animation: ticker 38s linear infinite;
+    font-size: 12px;
+    font-weight: 600;
+    padding-left: 100%;
+  }
+
+  .alert-bar.safe .ticker-text { color: var(--accent2); }
+  .alert-bar.warn .ticker-text { color: var(--warn); }
+  .alert-bar.danger .ticker-text { color: var(--danger); }
+
+  @keyframes ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: var(--border);
+  }
+
+  @media (min-width: 700px) {
+    .stats-grid { grid-template-columns: repeat(5, 1fr); }
+  }
+
+  .stat-card {
+    background: var(--panel);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--card-color, var(--accent));
+    box-shadow: 0 0 8px var(--card-color, var(--accent));
+  }
+
+  .stat-card .icon { font-size: 22px; }
+  .stat-card .label { font-size: 9px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; font-weight: 600; line-height: 1.3; }
+  .stat-card .value { font-family: 'Orbitron', monospace; font-size: 26px; font-weight: 700; color: var(--card-color, var(--accent)); line-height: 1; text-shadow: 0 0 12px var(--card-color, var(--accent)); }
+  .stat-card .unit { font-size: 12px; font-weight: 400; opacity: 0.7; }
+  .stat-card .subtext { font-size: 10px; color: var(--muted); line-height: 1.4; }
+
+  .bar-bg {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 2px;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--card-color, var(--accent));
+    transition: width 1.5s ease;
+  }
+
+  .body-grid {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: 1px;
+    background: var(--border);
+  }
+
+  @media (min-width: 900px) {
+    .body-grid { flex-direction: row; gap: 0; background: transparent; }
+  }
+
+  .map-panel {
+    position: relative;
+    background: var(--panel);
+    height: 400px;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border);
+    flex: 1;
+  }
+
+  @media (min-width: 900px) {
+    .map-panel { height: auto; border-bottom: none; border-right: 1px solid var(--border); }
+  }
+
+  #map {
+    width: 100%;
+    height: 100%;
+  }
+
+  .map-overlay-title {
+    position: absolute;
+    top: 10px;
+    left: 12px;
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 3px;
+    z-index: 10;
+    pointer-events: none;
+    background: rgba(2, 13, 26, 0.8);
+    padding: 4px 8px;
+    border-radius: 3px;
+  }
+
+  .map-controls {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    display: flex;
+    gap: 4px;
+    z-index: 10;
+  }
+
+  .map-btn {
+    font-family: 'Orbitron', monospace;
+    font-size: 8px;
+    padding: 4px 8px;
+    background: rgba(4, 15, 30, 0.9);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+
+  .map-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .map-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0, 200, 255, 0.1);
+  }
+
+  .side-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+  }
+
+  @media (min-width: 900px) {
+    .side-panel { display: flex; flex-direction: column; width: 300px; gap: 0; background: transparent; }
+  }
+
+  .side-section {
+    background: var(--panel);
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    overflow-y: auto;
+    max-height: 200px;
+  }
+
+  @media (min-width: 900px) {
+    .side-section { max-height: none; }
+  }
+
+  .side-section h3 {
+    font-family: 'Orbitron', monospace;
+    font-size: 8px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .compass-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 4px 0;
+  }
+
+  .compass {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    position: relative;
+    background: radial-gradient(circle, rgba(0, 200, 255, 0.05), transparent 70%);
+  }
+
+  .compass-ring {
+    position: absolute;
+    inset: 7px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 200, 255, 0.15);
+  }
+
+  .compass-label {
+    position: absolute;
+    font-family: 'Orbitron', monospace;
+    font-size: 8px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .compass-label.n { top: 3px; left: 50%; transform: translateX(-50%); color: var(--accent); }
+  .compass-label.s { bottom: 3px; left: 50%; transform: translateX(-50%); }
+  .compass-label.e { right: 3px; top: 50%; transform: translateY(-50%); }
+  .compass-label.w { left: 3px; top: 50%; transform: translateY(-50%); }
+
+  .compass-needle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4px;
+    transform-origin: bottom center;
+    transform: translateX(-50%) translateY(-100%) rotate(90deg);
+    transition: transform 1.2s ease;
+  }
+
+  .needle-head {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 28px solid var(--accent);
+    margin: 0 auto;
+    filter: drop-shadow(0 0 4px var(--accent));
+    position: relative;
+    left: -2px;
+  }
+
+  .needle-tail {
+    width: 0;
+    height: 0;
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    border-top: 14px solid rgba(255, 45, 85, 0.7);
+    margin: 0 auto;
+    position: relative;
+    left: -1px;
+  }
+
+  .compass-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 8px var(--accent);
+    z-index: 2;
+  }
+
+  .wind-info {
+    text-align: center;
+    margin-top: 6px;
+  }
+
+  .wind-speed-big {
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .wind-dir-text {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    margin-top: 2px;
+  }
+
+  .cyclone-box {
+    border: 1px solid;
+    border-radius: 4px;
+    padding: 10px;
+  }
+
+  .cyclone-box.safe {
+    border-color: var(--accent2);
+    background: rgba(0, 255, 159, 0.04);
+  }
+
+  .cyclone-box.watch {
+    border-color: var(--warn);
+    background: rgba(255, 204, 0, 0.05);
+    animation: watch-pulse 3s ease-in-out infinite;
+  }
+
+  .cyclone-box.danger {
+    border-color: var(--danger);
+    background: rgba(255, 45, 85, 0.06);
+    animation: alert-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes alert-pulse { 0%, 100% { box-shadow: none; } 50% { box-shadow: 0 0 16px rgba(255, 45, 85, 0.35); } }
+  @keyframes watch-pulse { 0%, 100% { box-shadow: none; } 50% { box-shadow: 0 0 12px rgba(255, 204, 0, 0.3); } }
+
+  .cyclone-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .cyclone-icon { font-size: 20px; }
+  .cyclone-label { font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700; letter-spacing: 2px; }
+
+  .cyclone-box.safe .cyclone-label { color: var(--accent2); }
+  .cyclone-box.watch .cyclone-label { color: var(--warn); }
+  .cyclone-box.danger .cyclone-label { color: var(--danger); }
+
+  .cyclone-detail { font-size: 10px; color: var(--muted); line-height: 1.5; }
+
+  .humidity-display {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .ring-wrap {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+  }
+
+  .ring-wrap svg { transform: rotate(-90deg); }
+
+  .ring-bg { fill: none; stroke: var(--border); stroke-width: 6; }
+  .ring-fill { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 170; stroke-dashoffset: 170; transition: stroke-dashoffset 1.5s ease; filter: drop-shadow(0 0 3px var(--accent)); }
+
+  .ring-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .hval { font-family: 'Orbitron', monospace; font-size: 22px; font-weight: 700; color: var(--accent); }
+  .hdesc { font-size: 10px; color: var(--muted); margin-top: 3px; }
+
+  .forecast-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .forecast-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-size: 10px;
+  }
+
+  .forecast-day { font-weight: 600; color: var(--text); letter-spacing: 1px; width: 30px; }
+  .forecast-icon { font-size: 16px; }
+  .forecast-range { font-family: 'Orbitron', monospace; font-size: 10px; }
+  .forecast-range .hi { color: var(--accent3); }
+  .forecast-range .lo { color: var(--muted); }
+  .forecast-rain { font-size: 9px; color: var(--accent); }
+
+  .footer {
+    padding: 8px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    font-size: 9px;
+    color: var(--muted);
+    background: rgba(4, 15, 30, 0.97);
+  }
+
+  .footer .tamil { font-family: 'Noto Sans Tamil', sans-serif; font-size: 10px; }
+
+  .loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 13, 26, 0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+    z-index: 500;
+    transition: opacity 0.5s;
+  }
+
+  .loading-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .loader-ring {
+    width: 50px;
+    height: 50px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loader-text {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 3px;
+  }
+
+  .loader-sub {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'Noto Sans Tamil', sans-serif;
+  }
+
+  .leaflet-container {
+    background: #020d1a !important;
+    font-family: 'Rajdhani', sans-serif;
+  }
+
+  .leaflet-control-zoom {
+    border: 1px solid var(--border) !important;
+    background: rgba(4, 15, 30, 0.9) !important;
+  }
+
+  .leaflet-control-zoom-in, .leaflet-control-zoom-out {
+    background: rgba(4, 15, 30, 0.9) !important;
+    border-bottom: 1px solid var(--border) !important;
+    color: var(--accent) !important;
+  }
+
+  .leaflet-control-zoom-in:hover, .leaflet-control-zoom-out:hover {
+    background: rgba(0, 200, 255, 0.2) !important;
+  }
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+<div class="loading-overlay" id="loading-overlay">
+  <div class="loader-ring"></div>
+  <div class="loader-text">IMD CHENNAI</div>
+  <div class="loader-sub">வானிலை தகவல் பெறப்படுகிறது...</div>
+</div>
+
+<div class="dashboard">
+  <header class="header">
+    <div class="header-left">
+      <div class="imd-logo">IMD</div>
+      <div class="header-titles">
+        <h1>Chennai Weather Centre</h1>
+        <div class="subtitle">இந்திய வானிலை ஆய்வு மையம் — சென்னை</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="clock" id="clock">--:--:--</div>
+      <div class="date-text" id="date-display"></div>
+      <div class="badges">
+        <div class="api-status loading" id="api-status">⏳ LOADING</div>
+        <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="alert-bar safe" id="alert-bar">
+    <div class="ticker-label" id="ticker-label">✅ STATUS</div>
+    <div class="ticker-wrap">
+      <div class="ticker-text" id="ticker-text">இந்திய வானிலை ஆய்வு மையம் — சென்னை | India Meteorological Department · Regional Meteorological Centre Chennai | வானிலை தகவல் பெறப்படுகிறது...</div>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card" style="--card-color:#ff6b35;">
+      <div class="icon">🌡️</div>
+      <div class="label">Temperature · வெப்பநிலை</div>
+      <div class="value" id="temp-val">--<span class="unit">°C</span></div>
+      <div class="subtext" id="temp-feel">Fetching live data...</div>
+      <div class="bar-bg"><div class="bar-fill" id="temp-bar" style="width:0%"></div></div>
+    </div>
+    <div class="stat-card" style="--card-color:#00c8ff;">
+      <div class="icon">🌧️</div>
+      <div class="label">Rainfall · மழை</div>
+      <div class="value" id="rain-val">--<span class="unit">mm</span></div>
+      <div class="subtext" id="rain-desc">Loading...</div>
+      <div class="bar-bg"><div class="bar-fill" id="rain-bar" style="width:0%"></div></div>
+    </div>
+    <div class="stat-card" style="--card-color:#00bfff;">
+      <div class="icon">💧</div>
+      <div class="label">Humidity · ஈரப்பதம்</div>
+      <div class="value" id="hum-val">--<span class="unit">%</span></div>
+      <div class="subtext" id="hum-desc">Loading...</div>
+      <div class="bar-bg"><div class="bar-fill" id="hum-bar" style="width:0%"></div></div>
+    </div>
+    <div class="stat-card" style="--card-color:#00ff9f;">
+      <div class="icon">💨</div>
+      <div class="label">Wind Speed · காற்று</div>
+      <div class="value" id="wind-val">--<span class="unit">km/h</span></div>
+      <div class="subtext" id="wind-dir-text">Direction: --</div>
+      <div class="bar-bg"><div class="bar-fill" id="wind-bar" style="width:0%"></div></div>
+    </div>
+    <div class="stat-card" style="--card-color:#ff2d55;grid-column:span 2;">
+      <div class="icon">🌀</div>
+      <div class="label">Cyclone Status · சூறாவளி நிலை</div>
+      <div class="value" id="cyclone-val" style="font-size:17px;color:var(--muted);">LOADING</div>
+      <div class="subtext" id="cyclone-sub">Scanning Bay of Bengal...</div>
+      <div class="bar-bg"><div class="bar-fill" id="cyclone-bar" style="width:20%;background:var(--muted);"></div></div>
+    </div>
+  </div>
+
+  <div class="body-grid">
+    <div class="map-panel">
+      <div class="map-overlay-title">LIVE WEATHER MAP</div>
+      <div class="map-controls">
+        <button class="map-btn active" onclick="switchWeatherLayer('temperature')" id="btn-temp">TEMP</button>
+        <button class="map-btn" onclick="switchWeatherLayer('humidity')" id="btn-hum">HUMIDITY</button>
+        <button class="map-btn" onclick="switchWeatherLayer('wind')" id="btn-wind">WIND</button>
+      </div>
+      <div id="map"></div>
+    </div>
+
+    <div class="side-panel">
+      <div class="side-section">
+        <h3>Wind Direction · காற்று திசை</h3>
+        <div class="compass-wrap">
+          <div class="compass">
+            <div class="compass-ring"></div>
+            <span class="compass-label n">N</span>
+            <span class="compass-label s">S</span>
+            <span class="compass-label e">E</span>
+            <span class="compass-label w">W</span>
+            <div class="compass-needle" id="needle">
+              <div class="needle-head"></div>
+              <div class="needle-tail"></div>
+            </div>
+            <div class="compass-center"></div>
+          </div>
+        </div>
+        <div class="wind-info">
+          <div class="wind-speed-big" id="wind-speed-big">--</div>
+          <div class="wind-dir-text" id="wind-dir-display">-- · --°</div>
+        </div>
+      </div>
+
+      <div class="side-section">
+        <h3>Cyclone Alert · சூறாவளி</h3>
+        <div class="cyclone-box safe" id="cyclone-box">
+          <div class="cyclone-status">
+            <div class="cyclone-icon" id="cyclone-icon">⏳</div>
+            <div class="cyclone-label" id="cyclone-label">LOADING...</div>
+          </div>
+          <div class="cyclone-detail" id="cyclone-detail">Checking Bay of Bengal for active cyclonic systems...</div>
+        </div>
+      </div>
+
+      <div class="side-section">
+        <h3>Humidity · ஈரப்பதம்</h3>
+        <div class="humidity-display">
+          <div class="ring-wrap">
+            <svg width="64" height="64" viewBox="0 0 64 64">
+              <circle class="ring-bg" cx="32" cy="32" r="27"/>
+              <circle class="ring-fill" id="hum-ring" cx="32" cy="32" r="27"/>
+            </svg>
+            <div class="ring-center" id="hum-ring-val">--%</div>
+          </div>
+          <div>
+            <div class="hval" id="hum-big">--%</div>
+            <div class="hdesc" id="hum-comfort">Loading...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-section">
+        <h3>5-Day Forecast · 5 நாள் முன்னறிவிப்பு</h3>
+        <div class="forecast-list" id="forecast-list">
+          <div style="text-align:center;color:var(--muted);padding:12px;font-size:11px;">
+            <div class="loader-ring" style="width:20px;height:20px;margin:0 auto 6px"></div>Fetching forecast...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <span>India Meteorological Department · Regional Meteorological Centre, Chennai</span>
+    <span class="tamil">தமிழ்நாடு மற்றும் புதுச்சேரி — வானிலை முன்னறிவிப்பு</span>
+    <span id="last-update">--</span>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="js/weather.js"></script>
+</body>
+</html>
